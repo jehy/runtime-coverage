@@ -1,0 +1,65 @@
+{
+  "parserOptions": {
+    "ecmaVersion": 2018,
+    "sourceType": "script",
+    "ecmaFeatures": {
+      "jsx": false
+    }
+  },
+  "env": {
+    "browser": false,
+    "node": true,
+    "mocha": true,
+    "jest": true
+  },
+  "extends": ["plugin:sonarjs/recommended", "airbnb-base"],
+  "plugins": [
+    "standard", "sonarjs", "import", "node", "promise"
+  ],
+  "rules": {
+    "import/no-extraneous-dependencies": [
+      "error",
+      {
+        "devDependencies": [
+          "./integrationTests/**.js",
+          "./**/__tests__/**.js"
+        ]
+      }
+    ],
+    "arrow-parens": ["error", "as-needed", { "requireForBlockBody": true }],
+    "node/exports-style": ["error", "module.exports"],
+    "promise/catch-or-return": ["error", {"allowFinally": true, "terminationMethod":  [
+      "catch", "asCallback"
+    ]}],
+    "promise/no-return-in-finally": ["error"],
+    "brace-style": ["error", "1tbs", { "allowSingleLine": true }],
+    "sonarjs/cognitive-complexity": ["error", 40],
+    "strict": [
+      "error",
+      "global"
+    ],
+    "prefer-destructuring": "warn",
+    "one-var": "off",
+    "no-mixed-operators": "off",
+    "arrow-body-style": "off",
+    "padded-blocks": "off",
+    "no-plusplus": "off",
+    "arrow-spacing": "off",
+    "object-curly-spacing": "off",
+    "object-shorthand": "warn",
+    "no-param-reassign": "warn",
+    "no-console": "error",
+    "newline-per-chained-call": "off",
+    "no-continue": "off",
+    "no-multi-spaces": "off",
+    "max-len": [
+      "error",
+      140
+    ],
+    "linebreak-style": [
+      "error",
+      "unix"
+    ]
+  }
+}
+
