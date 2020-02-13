@@ -1,0 +1,46 @@
+[
+  {
+    "scriptId": "430",
+    "url": "/web/my/runtime-coverage/__tests__/test-lib/used.js",
+    "functions": [
+      {
+        "functionName": "",
+        "ranges": [
+          {
+            "startOffset": 0,
+            "endOffset": 257,
+            "count": 1
+          }
+        ],
+        "isBlockCoverage": true
+      },
+      {
+        "functionName": "add",
+        "ranges": [
+          {
+            "startOffset": 16,
+            "endOffset": 150,
+            "count": 1
+          },
+          {
+            "startOffset": 52,
+            "endOffset": 132,
+            "count": 0
+          }
+        ],
+        "isBlockCoverage": true
+      },
+      {
+        "functionName": "theWorld",
+        "ranges": [
+          {
+            "startOffset": 195,
+            "endOffset": 231,
+            "count": 0
+          }
+        ],
+        "isBlockCoverage": false
+      }
+    ]
+  }
+]

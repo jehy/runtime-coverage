@@ -1,0 +1,19 @@
+[
+  {
+    "scriptId": "427",
+    "url": "/web/my/runtime-coverage/__tests__/test-lib/used.js",
+    "functions": [
+      {
+        "functionName": "add",
+        "ranges": [
+          {
+            "startOffset": 16,
+            "endOffset": 150,
+            "count": 1
+          }
+        ],
+        "isBlockCoverage": false
+      }
+    ]
+  }
+]

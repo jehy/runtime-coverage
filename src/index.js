@@ -20,7 +20,7 @@ const {mergeMap} = require('./v8-coverage');
 let v8CoverageInstrumenter;
 
 function match(itemPath, excludeArray) {
-  // https://github.com/paulmillr/chokidar/issues/577
+  // HACK for https://github.com/paulmillr/chokidar/issues/577
   const basename = path.basename(itemPath);
   if (basename[0] === '.') {
     return micromatch.isMatch(itemPath.substr(1), excludeArray);
@@ -53,8 +53,7 @@ function normalizeOptions(options) {
   }
 }
 
-function createEmptyCoverageBlock(file)
-{
+function createEmptyCoverageBlock(file) {
   const fileSize = fs.lstatSync(file).size;
   return {
     functionName: '',
@@ -136,6 +135,9 @@ async function getCoverage(options) {
   });
 
   options.reporters.forEach((reporter) => {
+    if (reporter === 'v8') {
+      return;
+    }
     const reportOptions = {};
     if (reporter.includes('text')) {
       reportOptions.file = reporter;
@@ -161,6 +163,9 @@ async function getCoverage(options) {
   }
   if (options.deleteCoverage) {
     fs.rmdirSync(options.coverageDirectory, { recursive: true });
+  }
+  if (options.reporters.includes('v8')) {
+    res.v8 = coverageData;
   }
   return res;
 }
