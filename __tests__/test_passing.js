@@ -34,6 +34,26 @@ describe('check coverage', ()=>{
     assert.equal(res.text, expected);
   });
 
+  it('sadly fails coverage on subsequent calls...', async () => {
+    await runtimeCoverage.startCoverage();
+    // eslint-disable-next-line global-require
+    const {add} = require('./test-lib/used');
+    const testFunctionResult = add(1, 2);
+    assert.equal(testFunctionResult, 3);
+    const options = {
+      reporters: ['text'],
+      return: true,
+      all: true,
+      exclude: standardExclude,
+    };
+    const res = await runtimeCoverage.getCoverage(options);
+    // eslint-disable-next-line no-console
+    console.log(res.text);
+    fs.writeFileSync(path.join(__dirname, '__snapshots__/FAIL.txt'), res.text);
+    const expected = fs.readFileSync(path.join(__dirname, '__snapshots__/FAIL.txt'), 'utf8');
+    assert.equal(res.text, expected);
+  });
+
   it('should not include noon used library when options.all is false', async ()=>{
     await runtimeCoverage.startCoverage();
     const {add} = requireUnCached('./test-lib/used');
