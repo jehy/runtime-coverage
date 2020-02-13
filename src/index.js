@@ -44,12 +44,27 @@ function normalizeOptions(options) {
   options.exclude = options.exclude || ['**/node_modules/**'];
   options.rootDir = options.rootDir || process.env.PWD;
   options.all = options.all || false;
+  options.forceLineMode = options.forceLineMode || false;
   options.deleteCoverage = options.deleteCoverage || options.deleteCoverage === undefined;
   options.coverageDirectory = options.coverageDirectory || fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
   options.return = options.return || options.return === undefined;
   if (!options.reporters || !options.reporters.length) {
     options.reporters = ['text'];
   }
+}
+
+function createEmptyCoverageBlock(file)
+{
+  const fileSize = fs.lstatSync(file).size;
+  return {
+    functionName: '',
+    ranges: [{
+      startOffset: 0,
+      endOffset: fileSize,
+      count: 0,
+    }],
+    isBlockCoverage: true,
+  };
 }
 /**
  * @param {Object}options options for getting coverage
@@ -58,6 +73,7 @@ function normalizeOptions(options) {
  * @param {string} [options.rootDir] starting directory for files that need coverage info, default process.env.PWD
  * @param {boolean} [options.all] include files which were not used in coverage data, default false
  * @param {boolean} [options.deleteCoverage] delete coverage directory after output, default true
+ * @param {boolean} [options.forceLineMode] force per line coverage, it works with subsequent function calls
  * @param {string} [options.coverageDirectory] Directory for storing coverage, defaults to temporary directory
  * @param {boolean} [options.return] return coverage data
  * @param {Array} [options.reporters] Array of reporters to use, default "text"
@@ -82,11 +98,19 @@ async function getCoverage(options) {
       res => res.url.startsWith(options.rootDir) && !match(res.url, options.exclude),
     );
 
+  // const tmpFind = coverageData.find(el=>el.url === '/web/my/runtime-coverage/__tests__/test-lib/used.js');
+  // console.log(JSON.stringify(tmpFind, null, 3));
   const filesHaveCoverage = [];
   const reportsListCovered = await Promise.map(coverageData, async (report) => {
     filesHaveCoverage.push(report.url);
     const converter = v8ToIstanbul(report.url);
     await converter.load(); // this is required due to the async source-map dependency.
+    if (options.forceLineMode) {
+      const emptyFunction = report.functions.find(func => func.functionName === '');
+      if (!emptyFunction) {
+        report.functions.unshift(createEmptyCoverageBlock(report.url));
+      }
+    }
     converter.applyCoverage(report.functions);
     return converter.toIstanbul();
   }, {concurrency: 1});
@@ -95,18 +119,8 @@ async function getCoverage(options) {
     const emptyReports = getAllProjectFiles(options.rootDir, options.exclude).filter(file => !filesHaveCoverage.includes(file));
     const reportsListEmpty = await Promise.map(emptyReports, async (file) => {
       const converter = v8ToIstanbul(file);
-      const fileSize = fs.lstatSync(file).size;
       await converter.load();
-      const emptyReportFunctions = [{
-        functionName: '(empty-report)',
-        ranges: [{
-          startOffset: 0,
-          endOffset: fileSize,
-          count: 0,
-        }],
-        isBlockCoverage: true,
-      }];
-      converter.applyCoverage(emptyReportFunctions); // apply empty coverage
+      converter.applyCoverage([createEmptyCoverageBlock(file)]); // apply empty coverage
       return converter.toIstanbul();
     }, {concurrency: 1});
     reportsList = reportsListCovered.concat(reportsListEmpty);

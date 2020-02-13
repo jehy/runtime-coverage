@@ -3,6 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const runtimeCoverage = require('../src');
 
 function requireUnCached(path2) {
   delete require.cache[require.resolve(path2)];
@@ -11,8 +12,9 @@ function requireUnCached(path2) {
 }
 
 describe('check coverage', ()=>{
+  const standardExclude = ['**/index.js', '**/node_modules/**', '**/__tests__/test_*.js', '**/src/**'];
+
   it('should include noon used library when options.all is true', async ()=>{
-    const runtimeCoverage = requireUnCached('../index');
     await runtimeCoverage.startCoverage();
     // eslint-disable-next-line global-require
     const {add} = require('./test-lib/used');
@@ -22,7 +24,7 @@ describe('check coverage', ()=>{
       reporters: ['text'],
       return: true,
       all: true,
-      exclude: ['**/index.js', '**/node_modules/**', '**/__tests__/test_*.js'],
+      exclude: standardExclude,
     };
     const res = await runtimeCoverage.getCoverage(options);
     // eslint-disable-next-line no-console
@@ -33,7 +35,6 @@ describe('check coverage', ()=>{
   });
 
   it('should not include noon used library when options.all is false', async ()=>{
-    const runtimeCoverage = requireUnCached('../index');
     await runtimeCoverage.startCoverage();
     const {add} = requireUnCached('./test-lib/used');
     const testFunctionResult = add(1, 2);
@@ -41,7 +42,7 @@ describe('check coverage', ()=>{
     const options = {
       reporters: ['text'],
       return: true,
-      exclude: ['**/index.js', '**/node_modules/**', '**/__tests__/test_*.js'],
+      exclude: standardExclude,
     };
     const res = await runtimeCoverage.getCoverage(options);
     // eslint-disable-next-line no-console
@@ -52,7 +53,6 @@ describe('check coverage', ()=>{
   });
 
   it('should use rootDir for filtering coverage data', async ()=>{
-    const runtimeCoverage = requireUnCached('../index');
     await runtimeCoverage.startCoverage();
     const {add} = requireUnCached('./test-lib/used');
     const testFunctionResult = add(1, 2);
@@ -68,6 +68,27 @@ describe('check coverage', ()=>{
     console.log(res.text);
     // fs.writeFileSync(path.join(__dirname, '__snapshots__/rootDir.txt'), res.text);
     const expected = fs.readFileSync(path.join(__dirname, '__snapshots__/rootDir.txt'), 'utf8');
+    assert.equal(res.text, expected);
+  });
+
+  it('should count lines approximately fine with forceLineMode even if module was already called', async ()=>{
+    await runtimeCoverage.startCoverage();
+    // eslint-disable-next-line global-require
+    const {add} = require('./test-lib/used');
+    const testFunctionResult = add(1, 2);
+    assert.equal(testFunctionResult, 3);
+    const options = {
+      reporters: ['text'],
+      return: true,
+      all: true,
+      exclude: standardExclude,
+      forceLineMode: true,
+    };
+    const res = await runtimeCoverage.getCoverage(options);
+    // eslint-disable-next-line no-console
+    console.log(res.text);
+    // fs.writeFileSync(path.join(__dirname, '__snapshots__/forceLineMode.txt'), res.text);
+    const expected = fs.readFileSync(path.join(__dirname, '__snapshots__/forceLineMode.txt'), 'utf8');
     assert.equal(res.text, expected);
   });
 });

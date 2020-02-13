@@ -60,5 +60,11 @@ Options for getCoverage:
 
 ### Beware
 
-You should start colelcting coverage before any calls to node modules being covered are made.
-Also, after stopping coverage collection, you should restart the service to make 
+After first module call, in subsequent calls V8 only reports partial coverage for called
+functions, and it leads to 100% module coverage. To avoid it, either:
+* Call all your code after `startCoverage()` call
+* Use option `forceLineMode` -  it can only help with line coverage and is approximate because
+can't know about comments, empty lines and statements - but it's better then nothing :)
+
+V8 coverage is still experimental, so of cause some thing are pretty rough. I'm still hoping to
+make a perfect runtime coverage - may be with help of istanbul metadata. Wanna help?
