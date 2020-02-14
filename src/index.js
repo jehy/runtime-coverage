@@ -335,6 +335,10 @@ async function getCoverage(options) {
     converter.applyCoverage(report.functions);
     return converter.toIstanbul();
   }, {concurrency: 1});
+  if (!options.reporters.includes('v8')) {
+    // drop it, not needed any more
+    coverageData.length = 0;
+  }
   let reportsList;
   // generate dummy empty coverage for non required files
   if (options.all) {
@@ -352,7 +356,7 @@ async function getCoverage(options) {
   }
 
   const map = mergeMap(libCoverage.createCoverageMap({}), reportsList);
-  return runReporters(options, map, options.reporters.includes('v8') && coverageData);
+  return runReporters(options, map, coverageData);
 }
 
 
