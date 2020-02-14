@@ -15,7 +15,6 @@ const Debug = require('debug');
 const semver = require('semver');
 const micromatch = require('micromatch');
 const Module = require('module');
-const crypto = require('crypto');
 
 const {mergeMap} = require('./v8-coverage');
 
@@ -71,10 +70,6 @@ function createEmptyCoverageBlock(file) {
   };
 }
 
-function md5(data) {
-  return crypto.createHash('md5').update(data).digest('hex');
-}
-
 const infiniteHandler = {
   get(obj, prop) {
     debugGeneral(`tried to access prop ${prop}`);
@@ -126,49 +121,34 @@ async function runReporters(options, map, coverageData) {
 
 const debugEmptyCov = Debug(('runtime-coverage:empty-coverage'));
 async function getEmptyV8Coverage(files, options) {
-  const tmpDir = fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
-  const nameMap = {};
-  const reverseMap = {};
-  await Promise.map(files, async (file)=>{
-    const newName = path.join(tmpDir, `${md5(file)}.js`);
-    nameMap[file] = newName;
-    reverseMap[newName] = file;
-    await fs.copyFile(file, newName);
-  }, {concurrency: 1});
   const v8CoverageInstrumenter2 = new CoverageInstrumenter();
   await v8CoverageInstrumenter2.startInstrumenting();
   const originalRequire = Module.prototype.require;
 
   Module.prototype.require = (filename) => {
-    debugEmptyCov(path.basename(filename))(`Attemted to require: ${filename}`);
+    debugEmptyCov(`${path.basename(filename)} Attemted to require: ${filename}`);
     return new Proxy({}, infiniteHandler);
   };
   files.forEach((file) => {
+    const cache = require.cache[require.resolve(file)];
+    require.cache[require.resolve(file)] = undefined;
     try {
-      const tempModule = originalRequire(nameMap[file]);
+      const tempModule = originalRequire(file);
       Object.values(tempModule)
         .forEach(someFunc=>someFunc());
     } catch (err) {
       debugEmptyCov(`Require failed: ${err}`);
     } finally {
-      delete require.cache[require.resolve(nameMap[file])];
+      require.cache[require.resolve(file)] = cache;
     }
   });
   Module.prototype.require = originalRequire;
   const coverage = await v8CoverageInstrumenter2.stopInstrumenting();
-  await fs.remove(tmpDir);
 
   return coverage
     .filter(res => res.url.startsWith('file://'))
     .map((res)=>{
-      const mappedBack = reverseMap[fileURLToPath(res.url)];
-      if (!mappedBack) {
-        // debug(`Cant map! res.url: ${res.url}, fileToURLPATH: ${fileURLToPath(res.url)}, reversemap: ${JSON.stringify(reverseMap)}`);
-        // process.exit(0);
-        return false;
-      }
-      debugEmptyCov(`mapped ${mappedBack} fine!`);
-      return { ...res, url: mappedBack};
+      return { ...res, url: fileURLToPath(res.url)};
     })
     .filter(res => res && shouldCover(res.url, options))
     .map((res) => {
