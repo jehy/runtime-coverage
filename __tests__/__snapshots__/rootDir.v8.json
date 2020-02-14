@@ -1,6 +1,6 @@
 [
   {
-    "scriptId": "430",
+    "scriptId": "472",
     "url": "/web/my/runtime-coverage/__tests__/test-lib/used.js",
     "functions": [
       {
@@ -8,7 +8,7 @@
         "ranges": [
           {
             "startOffset": 0,
-            "endOffset": 257,
+            "endOffset": 256,
             "count": 1
           }
         ],
@@ -28,7 +28,7 @@
             "count": 0
           }
         ],
-        "isBlockCoverage": true
+        "isBlockCoverage": false
       },
       {
         "functionName": "theWorld",

@@ -64,7 +64,9 @@ After first module call, in subsequent calls V8 only reports partial coverage fo
 functions, and it leads to 100% module coverage. To avoid it, either:
 * Call all your code after `startCoverage()` call
 * Use option `forceLineMode` -  it can only help with line coverage and is approximate because
-can't know about comments, empty lines and statements - but it's better then nothing :)
+can't know about comments, empty lines and statements - but it's safe
+* Use option `forceReload` (used by default) - it will try to safely reload and run your file. But
+thinks may break, kitten may die, and devil may be summoned - I warned you!
 
-V8 coverage is still experimental, so of cause some thing are pretty rough. I'm still hoping to
-make a perfect runtime coverage - may be with help of istanbul metadata. Wanna help?
+V8 coverage is still experimental, so of cause some thing are pretty clumsy.
+I'm still hoping tomake a perfect runtime coverage - may be with help of istanbul metadata. Wanna help?
