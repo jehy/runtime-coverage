@@ -49,6 +49,7 @@ function normalizeOptions(options) {
   options.rootDir = options.rootDir || process.env.PWD;
   options.all = options.all || false;
   options.forceLineMode = options.forceLineMode || false;
+  options.streamTimeout = options.streamTimeout || 60 * 1000;
   options.deleteCoverage = options.deleteCoverage || options.deleteCoverage === undefined;
   options.coverageDirectory = options.coverageDirectory || fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
   options.return = options.return || options.return === undefined;
@@ -145,7 +146,7 @@ async function runReporters(options, map, coverageData) {
           stream.once('close', ()=>resolve());
         });
         allStreamsClosed.push(streamClosed);
-        streamClosed.timeout(10 * 1000).catch(Promise.TimeoutError, ()=>{
+        streamClosed.timeout(options.streamTimeout).catch(Promise.TimeoutError, ()=>{
           debugReporters(`No one uses stream ${filePath}, destroying it...`);
           stream.destroy();
         }).catch((err)=>{
@@ -278,6 +279,7 @@ const debugGetCov = Debug(('runtime-coverage:get-coverage'));
  * @param {string} [options.coverageDirectory] Directory for storing coverage, defaults to temporary directory
  * @param {boolean} [options.return] return coverage data
  * @param {boolean} [options.stream] return coverage data as streams
+ * @param {boolean} [options.streamTimeout] destroy stream if not used during timeout
  * @param {Array} [options.reporters] Array of reporters to use, default "text"
  * https://github.com/istanbuljs/istanbuljs/tree/master/packages/istanbul-reports/lib
  *

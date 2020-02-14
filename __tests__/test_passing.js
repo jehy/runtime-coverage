@@ -133,6 +133,7 @@ describe('check coverage', ()=>{
       reporters: ['cobertura', 'json'],
       return: true,
       stream: true,
+      streamTimeout: 2 * 1000,
       exclude: standardExclude,
     };
     const testFunctionResult = add(1, 2);
