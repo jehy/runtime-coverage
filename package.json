@@ -1,6 +1,6 @@
 {
   "name": "runtime-coverage",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "main": "src/index.js",
   "author": "Jehy",
   "description": "Easy runtime coverage for node.js",
