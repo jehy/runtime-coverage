@@ -1,6 +1,6 @@
 [
   {
-    "scriptId": "460",
+    "scriptId": "478",
     "url": "/web/my/runtime-coverage/__tests__/test-lib/used.js",
     "functions": [
       {
@@ -8,7 +8,7 @@
         "ranges": [
           {
             "startOffset": 0,
-            "endOffset": 256,
+            "endOffset": 257,
             "count": 1
           }
         ],

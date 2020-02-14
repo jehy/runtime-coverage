@@ -56,6 +56,7 @@ Options for getCoverage:
  * `{boolean} [options.deleteCoverage]` delete coverage directory after output, default `true`
  * `{string} [options.coverageDirectory]` Directory for storing coverage, defaults to temporary directory
  * `{boolean} [options.return]` return coverage data, default `true`
+  * `{boolean} [options.stream]` return coverage data as a stream, useful for huge coverage data,  default `false`
  * `{Array} [options.reporters]` Array of reporters to use, default "text", see all possible [here](https://github.com/istanbuljs/istanbuljs/tree/master/packages/istanbul-reports/lib).
 
 ### Beware

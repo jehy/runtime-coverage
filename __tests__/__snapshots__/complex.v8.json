@@ -1,6 +1,6 @@
 [
   {
-    "scriptId": "466",
+    "scriptId": "484",
     "url": "/web/my/runtime-coverage/__tests__/test-lib/complex.js",
     "functions": [
       {
@@ -8,7 +8,7 @@
         "ranges": [
           {
             "startOffset": 0,
-            "endOffset": 321,
+            "endOffset": 322,
             "count": 1
           }
         ],

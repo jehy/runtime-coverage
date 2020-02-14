@@ -15,6 +15,7 @@ const Debug = require('debug');
 const semver = require('semver');
 const micromatch = require('micromatch');
 const Module = require('module');
+const { spawn } = require('child_process');
 
 const {mergeMap} = require('./v8-coverage');
 
@@ -77,6 +78,35 @@ const infiniteHandler = {
   },
 };
 
+async function fixCoberturaReport(fileName) {
+  // workaround for https://github.com/istanbuljs/istanbuljs/issues/527
+  // sed -i 's/<computed>/\&lt;computed\&gt;/g' ./cobertura-coverage.xml
+  return new Promise((resolve, reject) => {
+    const stdout = [];
+    const stderr = [];
+    // eslint-disable-next-line no-useless-escape
+    const ps = spawn('sed', ['-i', 's/<computed>/\&lt;computed\&gt;/g', fileName], {});
+    ps.stdout.on('data', (newData) => {
+      stdout.push(newData);
+    });
+
+    ps.stderr.on('data', (newData) => {
+      stderr.push(newData);
+    });
+
+    // eslint-disable-next-line no-unused-vars
+    ps.on('close', (code) => {
+      const data = { stderr: stderr.join('\n'), stdout: stdout.join('\n'), code};
+      if (code === 0) {
+        resolve(data);
+        return;
+      }
+      reject(data);
+    });
+  });
+}
+
+const debugReporters = Debug(('runtime-coverage:debug-reporters'));
 async function runReporters(options, map, coverageData) {
   const context = libReport.createContext({
     dir: options.coverageDirectory,
@@ -95,25 +125,52 @@ async function runReporters(options, map, coverageData) {
     report.execute(context);
   });
   let res = true;
+  const allStreamsClosed = [];
   if (options.return) {
     const files = fs.readdirSync(options.coverageDirectory).filter(f=>f !== '.' && f !== '..');
-    res = files.reduce((data, filename)=>{
+    res = await Promise.reduce(files,  async (data, filename)=>{
       const filePath = path.join(options.coverageDirectory, filename);
       if (fs.lstatSync(filePath).isDirectory()) {
         return data;
       }
-      data[filename] = fs.readFileSync(filePath, 'utf8');
       if (filename.includes('cobertura-coverage.xml')) {
-        // workaround for https://github.com/istanbuljs/istanbuljs/issues/527
-        data[filename] = data[filename].replace(/<computed>/g, '&lt;computed&gt;');
+        await fixCoberturaReport(filePath);
+        // data[filename] = data[filename].replace(/<computed>/g, '&lt;computed&gt;');
+      }
+      if (options.stream) {
+        const stream = fs.createReadStream(filePath, {encoding: 'utf8', emitClose: true});
+        data[filename] = stream;
+        const streamClosed = new Promise((resolve, reject)=>{
+          stream.once('error', err=>reject(err));
+          stream.once('close', ()=>resolve());
+        });
+        allStreamsClosed.push(streamClosed);
+        streamClosed.timeout(100).catch(Promise.TimeoutError, ()=>{
+          debugReporters(`No one uses stream ${filePath}, destroying it...`);
+          stream.destroy();
+        }).catch((err)=>{
+          debugReporters('failed to destroy stream', err);
+        });
+      } else {
+        data[filename] = fs.readFileSync(filePath, 'utf8');
       }
       return data;
     }, {});
   }
   if (options.deleteCoverage) {
-    await fs.remove(options.coverageDirectory);
+    Promise.all(allStreamsClosed).catch((err)=>{
+      debugReporters('Failed read coverage data in stream', err);
+    }).finally(async ()=>{
+      try {
+        await fs.remove(options.coverageDirectory);
+        debugReporters('coverage directory removed');
+      } catch (err) {
+        debugReporters('Failed to remove coverage directory', err);
+      }
+    });
   }
   if (options.reporters.includes('v8')) {
+    // for debug only, don't bother with a stream, either way it's already in memory
     res.v8 = coverageData;
   }
   return res;
@@ -126,7 +183,7 @@ async function getEmptyV8Coverage(files, options) {
   const originalRequire = Module.prototype.require;
 
   Module.prototype.require = (filename) => {
-    debugEmptyCov(`${path.basename(filename)} Attemted to require: ${filename}`);
+    debugEmptyCov(`${path.basename(filename)} Attempted to require: ${filename}`);
     return new Proxy({}, infiniteHandler);
   };
   files.forEach((file) => {
@@ -169,6 +226,44 @@ async function getEmptyV8Coverage(files, options) {
     });
 }
 
+const debugMergeCov = Debug(('runtime-coverage:merge-full-coverage'));
+
+function MergeFullCoverage(coverageData, emptyCoverage) {
+  coverageData.forEach((report)=>{
+    const emptyReport = emptyCoverage.find((rep)=>{
+      return rep.url === report.url;
+    });
+    if (!emptyReport) {
+      debugMergeCov(`No empty report for ${report.url}, smth went wrong?`);
+      return;
+    }
+    Object.values(emptyReport.functions).forEach((missingFunc)=>{
+      const coveredFunc = report.functions.find(el=>el.functionName === missingFunc.functionName);
+      if (!coveredFunc) {
+        debugMergeCov(`Adding func "${missingFunc.functionName}"`);
+        if (missingFunc.functionName === '') {
+          report.functions.unshift(missingFunc);
+        } else {
+          report.functions.push(missingFunc);
+        }
+      }  else {
+        debugMergeCov(`checking ranges for adding func "${missingFunc.functionName}":`);
+        debugMergeCov(`missing: ${JSON.stringify(missingFunc.ranges)}`);
+        debugMergeCov(`existing func ranges: ${JSON.stringify(coveredFunc.ranges)}`);
+        // check missing ranges
+        const coveredRanges = Object.values(coveredFunc.ranges).map(el=>`${el.startOffset}-${el.endOffset}`);
+        Object.values(missingFunc.ranges).forEach((range)=>{
+          debugMergeCov(`checking if range hash ${Object.values(range).join('-')} is in ${JSON.stringify(coveredRanges)}`);
+          if (!coveredRanges.includes(`${range.startOffset}-${range.endOffset}`)) {
+            coveredFunc.ranges.push(range);
+            debugMergeCov(`Pushed range ${range.startOffset}-${range.endOffset}`);
+          }
+        });
+      }
+    });
+  });
+}
+
 const debugGetCov = Debug(('runtime-coverage:get-coverage'));
 
 /**
@@ -182,6 +277,7 @@ const debugGetCov = Debug(('runtime-coverage:get-coverage'));
  * @param {boolean} [options.forceReload] reload modules to get full coverage data
  * @param {string} [options.coverageDirectory] Directory for storing coverage, defaults to temporary directory
  * @param {boolean} [options.return] return coverage data
+ * @param {boolean} [options.stream] return coverage data as streams
  * @param {Array} [options.reporters] Array of reporters to use, default "text"
  * https://github.com/istanbuljs/istanbuljs/tree/master/packages/istanbul-reports/lib
  *
@@ -206,44 +302,7 @@ async function getCoverage(options) {
   if (options.forceReload) {
     // get empty coverage data for merging later
     const emptyCoverage = await getEmptyV8Coverage(coveredFiles, options);
-    //  .filter(res => res.url.startsWith('file://'))
-    // .map(res => ({ ...res, url: fileURLToPath(res.url) }));
-
-
-    // console.log(emptyCoverage); process.exit(0);
-    coverageData.forEach((report)=>{
-      const emptyReport = emptyCoverage.find((rep)=>{
-        return rep.url === report.url;
-      });
-      if (!emptyReport) {
-        debugGetCov(`No empty report for ${report.url}, smth went wrong?`);
-        return;
-      }
-      Object.values(emptyReport.functions).forEach((missingFunc)=>{
-        const coveredFunc = report.functions.find(el=>el.functionName === missingFunc.functionName);
-        if (!coveredFunc) {
-          debugGetCov(`Adding func "${missingFunc.functionName}"`);
-          if (missingFunc.functionName === '') {
-            report.functions.unshift(missingFunc);
-          } else {
-            report.functions.push(missingFunc);
-          }
-        }  else {
-          debugGetCov(`checking ranges for adding func "${missingFunc.functionName}":`);
-          debugGetCov(`missing: ${JSON.stringify(missingFunc.ranges)}`);
-          debugGetCov(`existing func ranges: ${JSON.stringify(coveredFunc.ranges)}`);
-          // check missing ranges
-          const coveredRanges = Object.values(coveredFunc.ranges).map(el=>`${el.startOffset}-${el.endOffset}`);
-          Object.values(missingFunc.ranges).forEach((range)=>{
-            debugGetCov(`checking if range hash ${Object.values(range).join('-')} is in ${JSON.stringify(coveredRanges)}`);
-            if (!coveredRanges.includes(`${range.startOffset}-${range.endOffset}`)) {
-              coveredFunc.ranges.push(range);
-              debugGetCov(`Pushed range ${range.startOffset}-${range.endOffset}`);
-            }
-          });
-        }
-      });
-    });
+    MergeFullCoverage(coverageData, emptyCoverage);
   }
   // process actual coverage together with empty from prev step(if options.forceReload)
   const reportsListCovered = await Promise.map(coverageData, async (report) => {
@@ -275,7 +334,7 @@ async function getCoverage(options) {
   }
 
   const map = mergeMap(libCoverage.createCoverageMap({}), reportsList);
-  return runReporters(options, map, coverageData);
+  return runReporters(options, map, options.reporters.includes('v8') && coverageData);
 }
 
 const debugStartCov = Debug(('runtime-coverage:get-coverage'));

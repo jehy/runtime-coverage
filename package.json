@@ -1,6 +1,6 @@
 {
   "name": "runtime-coverage",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "main": "src/index.js",
   "author": "Jehy",
   "description": "Easy runtime coverage for node.js",
@@ -11,7 +11,8 @@
   },
   "homepage": "https://github.com/jehy/runtime-coverage",
   "scripts": {
-    "test": "DEBUG=runtime-coverage mocha __tests__",
+    "test": "DEBUG=runtime-coverage:* mocha __tests__ --timeout 16000",
+    "tanos": "npm tst && while [ $? -ne 1 ]; do npm tst ;done",
     "lint": "eslint ."
   },
   "dependencies": {
