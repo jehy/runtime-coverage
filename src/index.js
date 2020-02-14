@@ -26,17 +26,18 @@ function match(itemPath, excludeArray) {
   // HACK for https://github.com/paulmillr/chokidar/issues/577
   const basename = path.basename(itemPath);
   if (basename[0] === '.') {
-    return micromatch.isMatch(itemPath.substr(1), excludeArray);
+    return micromatch.isMatch(itemPath.replace(basename, basename.substr(1)), excludeArray);
   }
   return micromatch.isMatch(itemPath, excludeArray);
 }
 
-function getAllProjectFiles(rootDir, exclude) {
-  const filterFn = (item) => {
-    const basename = path.basename(item.path);
-    return basename[0] !== '.' && item.path.endsWith('.js') && !match(item.path, exclude);
-  };
-  const files = klawSync(rootDir, {filter: filterFn, traverseAll: true, nodir: true});
+function shouldCover(fileName, options) {
+  return fileName.startsWith(options.rootDir) && fileName.endsWith('.js') && !match(fileName, options.exclude);
+}
+
+function getAllProjectFiles(options) {
+  const filterFunc = file=>shouldCover(file.path, options);
+  const files = klawSync(options.rootDir, {filter: filterFunc, traverseAll: true, nodir: true});
   return files.map(file => file.path);
 }
 
@@ -124,17 +125,16 @@ async function runReporters(options, map, coverageData) {
 }
 
 const debugEmptyCov = Debug(('runtime-coverage:empty-coverage'));
-async function getEmptyV8Coverage(files) {
+async function getEmptyV8Coverage(files, options) {
   const tmpDir = fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
   const nameMap = {};
   const reverseMap = {};
-  files.forEach((file)=>{
+  await Promise.map(files, async (file)=>{
     const newName = path.join(tmpDir, `${md5(file)}.js`);
     nameMap[file] = newName;
     reverseMap[newName] = file;
-    fs.copyFileSync(file, newName);
-    // fs.appendFileSync(file, '\n'.repeat(Math.random() * 100));
-  });
+    await fs.copyFile(file, newName);
+  }, {concurrency: 1});
   const v8CoverageInstrumenter2 = new CoverageInstrumenter();
   await v8CoverageInstrumenter2.startInstrumenting();
   const originalRequire = Module.prototype.require;
@@ -160,20 +160,34 @@ async function getEmptyV8Coverage(files) {
 
   return coverage
     .filter(res => res.url.startsWith('file://'))
-    .map((res) => {
+    .map((res)=>{
       const mappedBack = reverseMap[fileURLToPath(res.url)];
       if (!mappedBack) {
         // debug(`Cant map! res.url: ${res.url}, fileToURLPATH: ${fileURLToPath(res.url)}, reversemap: ${JSON.stringify(reverseMap)}`);
         // process.exit(0);
         return false;
       }
-
       debugEmptyCov(`mapped ${mappedBack} fine!`);
-
       return { ...res, url: mappedBack};
-    }).filter(res=>res);
-}
+    })
+    .filter(res => res && shouldCover(res.url, options))
+    .map((res) => {
 
+      const functions = res.functions.map((func)=>{
+        if (func.functionName === '') {
+          return func;
+        }
+        return {
+          ...func,
+          ranges: func.ranges.map((range)=>{
+            return {...range, count: 0};
+          }),
+        };
+      });
+
+      return { ...res, functions};
+    });
+}
 
 const debugGetCov = Debug(('runtime-coverage:get-coverage'));
 
@@ -206,14 +220,12 @@ async function getCoverage(options) {
   const coverageData = v8CoverageResult
     .filter(res => res.url.startsWith('file://'))
     .map(res => ({ ...res, url: fileURLToPath(res.url) }))
-    .filter(
-      res => res.url.startsWith(options.rootDir) && !match(res.url, options.exclude),
-    );
+    .filter(res => shouldCover(res.url, options));
 
   const coveredFiles = coverageData.map(data=>data.url);
   if (options.forceReload) {
     // get empty coverage data for merging later
-    const emptyCoverage = (await getEmptyV8Coverage(coveredFiles));
+    const emptyCoverage = await getEmptyV8Coverage(coveredFiles, options);
     //  .filter(res => res.url.startsWith('file://'))
     // .map(res => ({ ...res, url: fileURLToPath(res.url) }));
 
@@ -269,7 +281,7 @@ async function getCoverage(options) {
   let reportsList;
   // generate dummy empty coverage for non required files
   if (options.all) {
-    const emptyReports = getAllProjectFiles(options.rootDir, options.exclude)
+    const emptyReports = getAllProjectFiles(options)
       .filter(file => !coveredFiles.includes(file));
     const reportsListEmpty = await Promise.map(emptyReports, async (file) => {
       const converter = v8ToIstanbul(file);
