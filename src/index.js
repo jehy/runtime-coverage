@@ -20,7 +20,15 @@ const { spawn } = require('child_process');
 const {mergeMap} = require('./v8-coverage');
 
 let v8CoverageInstrumenter;
-const debugGeneral = Debug(('runtime-coverage:generic'));
+
+const debug = {
+  generic: Debug('runtime-coverage:generic'),
+  reporters: Debug('runtime-coverage:debug-reporters'),
+  emptyCov: Debug('runtime-coverage:empty-coverage'),
+  mergeCov: Debug('runtime-coverage:merge-full-coverage'),
+  getCov: Debug('runtime-coverage:get-coverage'),
+  startCov: Debug('runtime-coverage:get-coverage'),
+};
 
 function match(itemPath, excludeArray) {
   // HACK for https://github.com/paulmillr/chokidar/issues/577
@@ -46,16 +54,22 @@ function normalizeOptions(options) {
     throw new Error('Options not passed!');
   }
   options.exclude = options.exclude || ['**/node_modules/**'];
-  options.rootDir = options.rootDir || process.env.PWD;
+  options.rootDir = path.normalize(options.rootDir || process.env.PWD);
   options.all = options.all || false;
   options.forceLineMode = options.forceLineMode || false;
   options.streamTimeout = options.streamTimeout || 60 * 1000;
   options.deleteCoverage = options.deleteCoverage || options.deleteCoverage === undefined;
-  options.coverageDirectory = options.coverageDirectory || fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
+  options.coverageDirectory = path.normalize(options.coverageDirectory || fs.mkdtempSync(`${os.tmpdir()}${path.sep}`));
   options.return = options.return || options.return === undefined;
   options.forceReload = options.forceReload || options.forceReload === undefined;
   if (!options.reporters || !options.reporters.length) {
     options.reporters = ['text'];
+  }
+  if (options.coverageDirectory === options.rootDir) {
+    throw new Error(`Coverage directory ${options.coverageDirectory} should be different from project directory!`);
+  }
+  if (options.coverageDirectory.split(path.sep).length < 3) {
+    throw new Error(`Suspicious coverage dir ${options.coverageDirectory}`);
   }
 }
 
@@ -74,7 +88,7 @@ function createEmptyCoverageBlock(file) {
 
 const infiniteHandler = {
   get(obj, prop) {
-    debugGeneral(`tried to access prop ${prop}`);
+    debug.generic(`tried to access prop ${prop}`);
     return new Proxy({}, infiniteHandler);
   },
 };
@@ -107,7 +121,6 @@ async function fixCoberturaReport(fileName) {
   });
 }
 
-const debugReporters = Debug(('runtime-coverage:debug-reporters'));
 async function runReporters(options, map, coverageData) {
   const context = libReport.createContext({
     dir: options.coverageDirectory,
@@ -147,10 +160,10 @@ async function runReporters(options, map, coverageData) {
         });
         allStreamsClosed.push(streamClosed);
         streamClosed.timeout(options.streamTimeout).catch(Promise.TimeoutError, ()=>{
-          debugReporters(`No one uses stream ${filePath}, destroying it...`);
+          debug.reporters(`No one uses stream ${filePath}, destroying it...`);
           stream.destroy();
         }).catch((err)=>{
-          debugReporters('failed to destroy stream', err);
+          debug.reporters('failed to destroy stream', err);
         });
       } else {
         data[filename] = fs.readFileSync(filePath, 'utf8');
@@ -160,13 +173,13 @@ async function runReporters(options, map, coverageData) {
   }
   if (options.deleteCoverage) {
     Promise.all(allStreamsClosed).catch((err)=>{
-      debugReporters('Failed read coverage data in stream', err);
+      debug.reporters('Failed read coverage data in stream', err);
     }).finally(async ()=>{
       try {
         await fs.remove(options.coverageDirectory);
-        debugReporters('coverage directory removed');
+        debug.reporters('coverage directory removed');
       } catch (err) {
-        debugReporters('Failed to remove coverage directory', err);
+        debug.reporters('Failed to remove coverage directory', err);
       }
     });
   }
@@ -177,14 +190,13 @@ async function runReporters(options, map, coverageData) {
   return res;
 }
 
-const debugEmptyCov = Debug(('runtime-coverage:empty-coverage'));
 async function getEmptyV8Coverage(files, options) {
   const v8CoverageInstrumenter2 = new CoverageInstrumenter();
   await v8CoverageInstrumenter2.startInstrumenting();
   const originalRequire = Module.prototype.require;
 
   Module.prototype.require = (filename) => {
-    debugEmptyCov(`${path.basename(filename)} Attempted to require: ${filename}`);
+    debug.emptyCov(`${path.basename(filename)} Attempted to require: ${filename}`);
     return new Proxy({}, infiniteHandler);
   };
   files.forEach((file) => {
@@ -193,9 +205,15 @@ async function getEmptyV8Coverage(files, options) {
     try {
       const tempModule = originalRequire(file);
       Object.values(tempModule)
-        .forEach(someFunc=>someFunc());
+        .forEach((someFunc)=>{
+          try {
+            someFunc();
+          } catch (err) {
+            debug.emptyCov(`func call failed: ${err}`);
+          }
+        });
     } catch (err) {
-      debugEmptyCov(`Require failed: ${err}`);
+      debug.emptyCov(`Require failed: ${err}`);
     } finally {
       require.cache[require.resolve(file)] = cache;
     }
@@ -227,7 +245,6 @@ async function getEmptyV8Coverage(files, options) {
     });
 }
 
-const debugMergeCov = Debug(('runtime-coverage:merge-full-coverage'));
 
 function MergeFullCoverage(coverageData, emptyCoverage) {
   coverageData.forEach((report)=>{
@@ -235,29 +252,29 @@ function MergeFullCoverage(coverageData, emptyCoverage) {
       return rep.url === report.url;
     });
     if (!emptyReport) {
-      debugMergeCov(`No empty report for ${report.url}, smth went wrong?`);
+      debug.mergeCov(`No empty report for ${report.url}, smth went wrong?`);
       return;
     }
     Object.values(emptyReport.functions).forEach((missingFunc)=>{
       const coveredFunc = report.functions.find(el=>el.functionName === missingFunc.functionName);
       if (!coveredFunc) {
-        debugMergeCov(`Adding func "${missingFunc.functionName}"`);
+        debug.mergeCov(`Adding func "${missingFunc.functionName}"`);
         if (missingFunc.functionName === '') {
           report.functions.unshift(missingFunc);
         } else {
           report.functions.push(missingFunc);
         }
       }  else {
-        debugMergeCov(`checking ranges for adding func "${missingFunc.functionName}":`);
-        debugMergeCov(`missing: ${JSON.stringify(missingFunc.ranges)}`);
-        debugMergeCov(`existing func ranges: ${JSON.stringify(coveredFunc.ranges)}`);
+        debug.mergeCov(`checking ranges for adding func "${missingFunc.functionName}":`);
+        debug.mergeCov(`missing: ${JSON.stringify(missingFunc.ranges)}`);
+        debug.mergeCov(`existing func ranges: ${JSON.stringify(coveredFunc.ranges)}`);
         // check missing ranges
         const coveredRanges = Object.values(coveredFunc.ranges).map(el=>`${el.startOffset}-${el.endOffset}`);
         Object.values(missingFunc.ranges).forEach((range)=>{
-          debugMergeCov(`checking if range hash ${Object.values(range).join('-')} is in ${JSON.stringify(coveredRanges)}`);
+          debug.mergeCov(`checking if range hash ${Object.values(range).join('-')} is in ${JSON.stringify(coveredRanges)}`);
           if (!coveredRanges.includes(`${range.startOffset}-${range.endOffset}`)) {
             coveredFunc.ranges.push(range);
-            debugMergeCov(`Pushed range ${range.startOffset}-${range.endOffset}`);
+            debug.mergeCov(`Pushed range ${range.startOffset}-${range.endOffset}`);
           }
         });
       }
@@ -265,7 +282,6 @@ function MergeFullCoverage(coverageData, emptyCoverage) {
   });
 }
 
-const debugGetCov = Debug(('runtime-coverage:get-coverage'));
 
 /**
  * @param {Object}options options for getting coverage
@@ -285,14 +301,14 @@ const debugGetCov = Debug(('runtime-coverage:get-coverage'));
  *
  */
 async function getCoverage(options) {
-  debugGetCov(`getCoverage called. Options: ${JSON.stringify(options)}`);
+  debug.getCov(`getCoverage called. Options: ${JSON.stringify(options)}`);
   normalizeOptions(options);
-  debugGetCov(`normalized options: ${JSON.stringify(options)}`);
+  debug.getCov(`normalized options: ${JSON.stringify(options)}`);
   if (!v8CoverageInstrumenter) {
     throw new Error('You need to start coverage first!');
   }
   const v8CoverageResult = await v8CoverageInstrumenter.stopInstrumenting();
-  debugGetCov('stopped instrumenting');
+  debug.getCov('stopped instrumenting');
   v8CoverageInstrumenter = null;
 
   const coverageData = v8CoverageResult
@@ -339,7 +355,6 @@ async function getCoverage(options) {
   return runReporters(options, map, options.reporters.includes('v8') && coverageData);
 }
 
-const debugStartCov = Debug(('runtime-coverage:get-coverage'));
 
 async function startCoverage() {
   if (!semver.satisfies(process.version, '>= 10.12.0')) {
@@ -347,13 +362,13 @@ async function startCoverage() {
     Please use node >= 10.12.0 or babel coverage.`);
   }
   if (v8CoverageInstrumenter) {
-    debugStartCov('v8CoverageInstrumenter already started, restarting it');
+    debug.startCov('v8CoverageInstrumenter already started, restarting it');
     await v8CoverageInstrumenter.stopInstrumenting();
     v8CoverageInstrumenter = null;
   }
   v8CoverageInstrumenter = new CoverageInstrumenter();
   await v8CoverageInstrumenter.startInstrumenting();
-  debugStartCov('started instrumenting');
+  debug.startCov('started instrumenting');
   return true;
 }
 
