@@ -2,7 +2,7 @@
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
 <coverage lines-valid="17" lines-covered="11" line-rate="0.6470999999999999" branches-valid="1" branches-covered="1" branch-rate="1" timestamp="">
   <sources>
-    <source>/web/my/runtime-coverage</source>
+    <source></source>
   </sources>
   <packages>
     <class name="used.js" filename="__tests__/test-lib/used.js" line-rate="0.6470999999999999" branch-rate="1">

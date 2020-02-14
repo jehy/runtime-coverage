@@ -9,7 +9,7 @@ const {add} = require('./test-lib/used');
 const REWRITE_SNAPSHOTS = false;
 
 function compareSnapshot(testName, res) {
-  const normalized = res.text.replace(/timestamp=".*"/g, 'timestamp=""');
+  const normalized = res.text.replace(/timestamp=".*"/g, 'timestamp=""').split(process.env.PWD).join('');
   // eslint-disable-next-line no-console
   console.log(normalized);
   const fileName = path.join(__dirname, `__snapshots__/${testName}.txt`);
