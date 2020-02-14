@@ -145,7 +145,7 @@ async function runReporters(options, map, coverageData) {
           stream.once('close', ()=>resolve());
         });
         allStreamsClosed.push(streamClosed);
-        streamClosed.timeout(100).catch(Promise.TimeoutError, ()=>{
+        streamClosed.timeout(10 * 1000).catch(Promise.TimeoutError, ()=>{
           debugReporters(`No one uses stream ${filePath}, destroying it...`);
           stream.destroy();
         }).catch((err)=>{
