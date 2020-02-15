@@ -5,7 +5,7 @@
 
 # Runtime coverage
 
-Enable coverage after service startup, gather coverage and disable it!
+Enable coverage any time after service startup, gather coverage and disable it!
 
 Useful for integration tests and checking for dead code branches.
 
@@ -47,7 +47,7 @@ You can also get coverage in any format of istanbul reporters, for example cober
 
 ### Options
 
-Options for getCoverage:
+Options for `getCoverage`:
 
  * `{Object} options` options for getting coverage
  * `{Array} [options.exclude]` exclude those files in coverage, [micromatch](https://github.com/micromatch/micromatch) array, default `**/node_modules/**`
@@ -59,6 +59,11 @@ Options for getCoverage:
  * `{boolean} [options.stream]` return coverage data as a stream, useful for huge coverage data,  default `false`
  * `{boolean} [options.streamTimeout]` destroy stream if not used after this timeout,  default `60*1000` millis
  * `{Array} [options.reporters]` Array of reporters to use, default "text", see all possible [here](https://github.com/istanbuljs/istanbuljs/tree/master/packages/istanbul-reports/lib).
+
+
+### Sample
+
+Short express sample [here](https://github.com/jehy/runtime-coverage-sample).
 
 ### Beware
 
