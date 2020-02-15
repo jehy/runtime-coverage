@@ -5,3 +5,4 @@ build
 coverage
 .idea
 package-lock.json
+__tests__/__snapshots__/*.v8.json
