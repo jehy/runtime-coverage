@@ -22,7 +22,6 @@ const {mergeMap} = require('./v8-coverage');
 let v8CoverageInstrumenter;
 
 const debug = {
-  generic: Debug('runtime-coverage:generic'),
   reporters: Debug('runtime-coverage:debug-reporters'),
   emptyCov: Debug('runtime-coverage:empty-coverage'),
   mergeCov: Debug('runtime-coverage:merge-full-coverage'),
@@ -85,13 +84,6 @@ function createEmptyCoverageBlock(file) {
     isBlockCoverage: true,
   };
 }
-
-const infiniteHandler = {
-  get(obj, prop) {
-    debug.generic(`tried to access prop ${prop}`);
-    return new Proxy({}, infiniteHandler);
-  },
-};
 
 async function fixCoberturaReport(fileName) {
   // workaround for https://github.com/istanbuljs/istanbuljs/issues/527
@@ -193,6 +185,16 @@ async function runReporters(options, map, coverageData) {
   return res;
 }
 
+
+const infiniteHandler = {
+  get(obj, prop) {
+    debug.emptyCov(`tried to access prop ${prop}`);
+    return this;
+  },
+};
+
+const infiniteProxy = new Proxy({}, infiniteHandler);
+
 async function getEmptyV8Coverage(files, options) {
   const v8CoverageInstrumenter2 = new CoverageInstrumenter();
   await v8CoverageInstrumenter2.startInstrumenting();
@@ -200,7 +202,7 @@ async function getEmptyV8Coverage(files, options) {
 
   Module.prototype.require = (filename) => {
     debug.emptyCov(`${path.basename(filename)} Attempted to require: ${filename}`);
-    return new Proxy({}, infiniteHandler);
+    return infiniteProxy;
   };
   files.forEach((file) => {
     const cache = require.cache[require.resolve(file)];
@@ -318,6 +320,7 @@ async function getCoverage(options) {
     .filter(res => res.url.startsWith('file://'))
     .map(res => ({ ...res, url: fileURLToPath(res.url) }))
     .filter(res => shouldCover(res.url, options));
+  v8CoverageResult.length = 0; // we don't need it any more
 
   const coveredFiles = coverageData.map(data=>data.url);
   if (options.forceReload) {
@@ -359,6 +362,9 @@ async function getCoverage(options) {
   }
 
   const map = mergeMap(libCoverage.createCoverageMap({}), reportsList);
+  // we don't need them any more. V8 should clean it up either way, but just to be sure...
+  reportsListCovered.length = 0;
+  reportsList.length = 0;
   return runReporters(options, map, coverageData);
 }
 
