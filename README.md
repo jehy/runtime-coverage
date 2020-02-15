@@ -77,3 +77,8 @@ thinks may break, kitten may die, and devil may be summoned - I warned you!
 
 V8 coverage is still experimental, so of cause some thing are pretty clumsy.
 I'm still hoping tomake a perfect runtime coverage - may be with help of istanbul metadata. Wanna help?
+
+### Debug
+
+If you wanna debug library work, launch your project with env variable
+`DEBUG=runtime-coverage:* `
