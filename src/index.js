@@ -211,7 +211,11 @@ async function getEmptyV8Coverage(files, options) {
       const tempModule = originalRequire(file);
       Object.values(tempModule)
         .forEach((someFunc)=>{
+          // try to call all module funcs for maximum detailed empty coverage
           try {
+            if (typeof someFunc !== 'function') {
+              return;
+            }
             someFunc();
           } catch (err) {
             debug.emptyCov(`func call failed: ${err}`);
