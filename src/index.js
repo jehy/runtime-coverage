@@ -357,15 +357,8 @@ async function getCoverage(options) {
     const reportsListEmpty = await Promise.map(emptyReports, async (file) => {
       const converter = v8ToIstanbul(file);
       try {
-        // sometimes it suddenly tries to open non exitent src files instead of
-        // build files (where does it even take it from??) and fails with error like
-        // Error: ENOENT: no such file or directory, open '/web/my/runtime-coverage-sample/node_modules/table/src/wrapWord.js'] {
-        //   errno: -2,
-        //   code: 'ENOENT',
-        //   syscall: 'open',
-        //   path: '/runtime-coverage-sample/node_modules/table/src/wrapWord.js'
-        // }
-        // So just catch it and ignore for now. Need to debug...
+        // Since some packages are build and their source is removed, they
+        // can leave unsatisfied dependants. So just ignore it.
         await converter.load();
       } catch (err) {
         debug.getCov('Error on converter.load() for all files', JSON.stringify(err));
