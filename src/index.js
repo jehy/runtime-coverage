@@ -100,7 +100,7 @@ async function fixCoberturaReport(fileName) {
     const stdout = [];
     const stderr = [];
     // eslint-disable-next-line no-useless-escape
-    const ps = spawn('sed', ['-i', 's/<computed>/\&lt;computed\&gt;/g', fileName], {});
+    const ps = spawn('sed', ['-i', 's/<computed>/\\&lt;computed\\&gt;/g', fileName], {});
     ps.stdout.on('data', (newData) => {
       stdout.push(newData);
     });
@@ -145,10 +145,13 @@ async function runReporters(options, map, coverageData) {
     res = await Promise.reduce(files,  async (data, filename)=>{
       const filePath = path.join(options.coverageDirectory, filename);
       if (fs.lstatSync(filePath).isDirectory()) {
+        // ignore dirs
         return data;
       }
+      debug.reporters(`got filename ${filename}`);
       if (filename.includes('cobertura-coverage.xml')) {
         await fixCoberturaReport(filePath);
+        debug.reporters(`fixed cobertura ${filename}`);
         // data[filename] = data[filename].replace(/<computed>/g, '&lt;computed&gt;');
       }
       if (options.stream) {
