@@ -9,16 +9,45 @@ const { fileURLToPath } = require('url');
 const path = require('path');
 const fs = require('fs-extra');
 const os = require('os');
+const { fork } = require('child_process');
 const Promise = require('bluebird');
 const klawSync = require('klaw-sync');
 const semver = require('semver');
 
 const {mergeMap} = require('./v8-coverage');
 const {debug, shouldCover} = require('./utils');
-const getEmptyV8Coverage = require('./getEmptyV8Coverage');
 const fixCoberturaReport = require('./fixCoberturaReport');
 
 let v8CoverageInstrumenter;
+
+async function getEmptyV8Coverage(files, options) {
+  const getEmptyV8CoverageProcess = fork(path.join(__dirname, 'getEmptyV8Coverage'));
+  getEmptyV8CoverageProcess.send({ files, options });
+  let replyReceived = false;
+  try {
+    // we need to await here, otherwise finally won't work
+    // eslint-disable-next-line sonarjs/prefer-immediate-return
+    const result = await new Promise((resolve, reject) => {
+      getEmptyV8CoverageProcess
+        .on('message', (message) => {
+          replyReceived = true;
+          if (message instanceof Error) {
+            reject(message);
+            return;
+          }
+          resolve(message);
+        })
+        .on('error', err => reject(err))
+        .on('exit', (code, signal) => reject(new Error(`process closed before data was sent! code: ${code} signal: ${signal}`)));
+    });
+    return result;
+  }  finally {
+    if (!replyReceived) {
+      debug.emptyCov('Reply not received, killing empty coverage process');
+      getEmptyV8CoverageProcess.kill('SIGTERM');
+    }
+  }
+}
 
 
 function getAllProjectFiles(options) {
@@ -112,7 +141,7 @@ async function runReporters(options, map, coverageData) {
           debug.reporters('failed to destroy stream', err);
         });
       } else {
-        data[filename] = fs.readFileSync(filePath, 'utf8');
+        data[filename] = await fs.readFile(filePath, 'utf8');
       }
       return data;
     }, {});

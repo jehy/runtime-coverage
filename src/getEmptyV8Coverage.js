@@ -75,4 +75,13 @@ async function getEmptyV8Coverage(files, options) {
     });
 }
 
-module.exports = getEmptyV8Coverage;
+process.on('message', async (message) => {
+  try {
+    const coverageResult = await getEmptyV8Coverage(message.files, message.options);
+    process.send(coverageResult);
+  } catch (err) {
+    process.send(err);
+    process.exit(1);
+  }
+  process.exit(0);
+});
