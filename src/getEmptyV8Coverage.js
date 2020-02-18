@@ -4,6 +4,7 @@ const Module = require('module');
 const path = require('path');
 const { CoverageInstrumenter } = require('collect-v8-coverage');
 const { fileURLToPath } = require('url');
+const Promise = require('bluebird');
 
 const {debug, shouldCover} = require('./utils');
 
@@ -75,12 +76,17 @@ async function getEmptyV8Coverage(files, options) {
     });
 }
 
+
 process.on('message', async (message) => {
   try {
     const coverageResult = await getEmptyV8Coverage(message.files, message.options);
-    process.send(coverageResult);
+    const res = await Promise.promisify(process.send, {context: process})(coverageResult, undefined, {});
+    if (res !== true) {
+      process.exit(1);
+    }
   } catch (err) {
-    process.send(err);
+    // eslint-disable-next-line no-console
+    await Promise.promisify(process.send, {context: process})(err, undefined, {}).catch((err2)=>{ console.log(err2); });
     process.exit(1);
   }
   process.exit(0);

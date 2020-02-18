@@ -21,7 +21,7 @@ const fixReport = require('./fixReport');
 let v8CoverageInstrumenter;
 
 async function getEmptyV8Coverage(files, options) {
-  const getEmptyV8CoverageProcess = fork(path.join(__dirname, 'getEmptyV8Coverage'));
+  const getEmptyV8CoverageProcess = fork(path.join(__dirname, 'getEmptyV8Coverage'), [], {env: {}, execArgv: []});
   getEmptyV8CoverageProcess.send({ files, options });
   let replyReceived = false;
   try {
