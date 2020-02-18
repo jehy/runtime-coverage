@@ -16,7 +16,7 @@ const semver = require('semver');
 
 const {mergeMap} = require('./v8-coverage');
 const {debug, shouldCover} = require('./utils');
-const fixCoberturaReport = require('./fixCoberturaReport');
+const fixReport = require('./fixReport');
 
 let v8CoverageInstrumenter;
 
@@ -103,10 +103,9 @@ async function runReporters(options, map, coverageData) {
     if (reporter === 'v8') {
       return;// we will deal with it later
     }
-    const reportOptions = {};
-    if (reporter.includes('text')) {
-      reportOptions.file = reporter;
-    }
+    const reportOptions = {
+      file: reporter,
+    };
     const report = istanbulReports.create(reporter, reportOptions);
     report.execute(context);
   });
@@ -121,9 +120,9 @@ async function runReporters(options, map, coverageData) {
         return data;
       }
       debug.reporters(`got filename ${filename}`);
-      if (filename.includes('cobertura-coverage.xml')) {
-        await fixCoberturaReport(filePath);
-        debug.reporters(`fixed cobertura ${filename}`);
+      if (filename.includes('cobertura')) {
+        await fixReport.fixCoberturaReport(filePath);
+        debug.reporters(`fixed cobertura file ${filename}`);
         // data[filename] = data[filename].replace(/<computed>/g, '&lt;computed&gt;');
       }
       if (options.stream) {

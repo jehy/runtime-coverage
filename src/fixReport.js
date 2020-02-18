@@ -31,4 +31,4 @@ async function fixCoberturaReport(fileName) {
   });
 }
 
-module.exports = fixCoberturaReport;
+module.exports = {fixCoberturaReport};

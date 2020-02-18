@@ -1,12 +1,22 @@
 'use strict';
 
+const os = require('os');
 const assert = require('assert');
-const fs = require('fs');
+const fs = require('fs-extra');
 const path = require('path');
+const sinon = require('sinon');
 const runtimeCoverage = require('../src');
 const {add} = require('./test-lib/used');
+const fixReport = require('../src/fixReport');
 
 const REWRITE_SNAPSHOTS = false;
+
+function createTempFile(data) {
+  const tmpDir = fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
+  const tmpFileName = `${tmpDir}tmp.txt`;
+  fs.writeFileSync(tmpFileName, data);
+  return {tmpDir, tmpFileName};
+}
 
 function compareSnapshot(testName, res) {
   const normalized = res.text.replace(/timestamp=".*"/g, 'timestamp=""').split(process.env.PWD).join('');
@@ -25,7 +35,10 @@ function compareSnapshot(testName, res) {
 
 describe('check coverage', ()=>{
   const standardExclude = ['**/index.js', '**/node_modules/**', '**/__tests__/test_*.js', '**/src/**'];
-
+  const sandbox = sinon.createSandbox();
+  afterEach(() => {
+    sandbox.restore();
+  });
   it('should include non used library when options.all is true', async ()=>{
     await runtimeCoverage.startCoverage();
     const testFunctionResult = add(1, 2);
@@ -127,7 +140,8 @@ describe('check coverage', ()=>{
     compareSnapshot('complex', res);
   });
 
-  it('should work with a stream and self destroy extra stream', async ()=>{
+  it('should work with cobertura, fix it, give a stream and self destroy extra stream', async ()=>{
+    const spy = sandbox.spy(fixReport, 'fixCoberturaReport');
     await runtimeCoverage.startCoverage();
     const options = {
       reporters: ['cobertura', 'json'],
@@ -140,12 +154,22 @@ describe('check coverage', ()=>{
     assert.equal(testFunctionResult, 3);
     const res = await runtimeCoverage.getCoverage(options);
     const data = [];
-    const stream = res['cobertura-coverage.xml'];
+    const stream = res.cobertura;
     stream.on('data', chunk => data.push(chunk));
     await new Promise((resolve, reject)=>{
       stream.on('end', () => resolve());
       stream.on('error', err => reject(err));
     });
+    assert(spy.called);
     compareSnapshot('stream', {text: data.join(), v8: res.v8});
+  });
+
+  it('should really fix cobertura report', async ()=>{
+    const dataToFix = '<some tag>some data</some tag><computed>lalala</computed>';
+    const {tmpDir, tmpFileName} = createTempFile(dataToFix);
+    await fixReport.fixCoberturaReport(tmpFileName);
+    const newData = await fs.readFile(tmpFileName);
+    await fs.remove(tmpDir);
+    assert.equal(newData, '<some tag>some data</some tag>&lt;computed&gt;lalala</computed>');
   });
 });
