@@ -11,36 +11,15 @@ const fs = require('fs-extra');
 const os = require('os');
 const Promise = require('bluebird');
 const klawSync = require('klaw-sync');
-const Debug = require('debug');
 const semver = require('semver');
-const micromatch = require('micromatch');
-const Module = require('module');
-const { spawn } = require('child_process');
 
 const {mergeMap} = require('./v8-coverage');
+const {debug, shouldCover} = require('./utils');
+const getEmptyV8Coverage = require('./getEmptyV8Coverage');
+const fixCoberturaReport = require('./fixCoberturaReport');
 
 let v8CoverageInstrumenter;
 
-const debug = {
-  reporters: Debug('runtime-coverage:debug-reporters'),
-  emptyCov: Debug('runtime-coverage:empty-coverage'),
-  mergeCov: Debug('runtime-coverage:merge-full-coverage'),
-  getCov: Debug('runtime-coverage:get-coverage'),
-  startCov: Debug('runtime-coverage:get-coverage'),
-};
-
-function match(itemPath, excludeArray) {
-  // HACK for https://github.com/paulmillr/chokidar/issues/577
-  const basename = path.basename(itemPath);
-  if (basename[0] === '.') {
-    return micromatch.isMatch(itemPath.replace(basename, basename.substr(1)), excludeArray);
-  }
-  return micromatch.isMatch(itemPath, excludeArray);
-}
-
-function shouldCover(fileName, options) {
-  return fileName.startsWith(options.rootDir) && fileName.endsWith('.js') && !match(fileName, options.exclude);
-}
 
 function getAllProjectFiles(options) {
   const filterFunc = file=>shouldCover(file.path, options);
@@ -83,34 +62,6 @@ function createEmptyCoverageBlock(file) {
     }],
     isBlockCoverage: true,
   };
-}
-
-async function fixCoberturaReport(fileName) {
-  // workaround for https://github.com/istanbuljs/istanbuljs/issues/527
-  // sed -i 's/<computed>/\&lt;computed\&gt;/g' ./cobertura-coverage.xml
-  return new Promise((resolve, reject) => {
-    const stdout = [];
-    const stderr = [];
-    // eslint-disable-next-line no-useless-escape
-    const ps = spawn('sed', ['-i', 's/<computed>/\\&lt;computed\\&gt;/g', fileName], {});
-    ps.stdout.on('data', (newData) => {
-      stdout.push(newData);
-    });
-
-    ps.stderr.on('data', (newData) => {
-      stderr.push(newData);
-    });
-
-    // eslint-disable-next-line no-unused-vars
-    ps.on('close', (code) => {
-      const data = { stderr: stderr.join('\n'), stdout: stdout.join('\n'), code};
-      if (code === 0) {
-        resolve(data);
-        return;
-      }
-      reject(data);
-    });
-  });
 }
 
 async function runReporters(options, map, coverageData) {
@@ -184,76 +135,6 @@ async function runReporters(options, map, coverageData) {
   }
   return res;
 }
-
-
-const infiniteHandler = {
-  get(obj, prop) {
-    debug.emptyCov(`tried to access prop ${prop}`);
-    return this;
-  },
-};
-
-const infiniteProxy = new Proxy({}, infiniteHandler);
-
-async function getEmptyV8Coverage(files, options) {
-  const v8CoverageInstrumenter2 = new CoverageInstrumenter();
-  await v8CoverageInstrumenter2.startInstrumenting();
-  const originalRequire = Module.prototype.require;
-
-  Module.prototype.require = (filename) => {
-    debug.emptyCov(`${path.basename(filename)} Attempted to require: ${filename}`);
-    return infiniteProxy;
-  };
-  files.forEach((file) => {
-    const cache = require.cache[require.resolve(file)];
-    require.cache[require.resolve(file)] = undefined;
-    try {
-      const tempModule = originalRequire(file);
-      Object.values(tempModule)
-        .forEach((someFunc)=>{
-          // try to call all module funcs for maximum detailed empty coverage
-          try {
-            if (typeof someFunc !== 'function') {
-              return;
-            }
-            someFunc();
-          } catch (err) {
-            debug.emptyCov(`func call failed: ${err}`);
-          }
-        });
-    } catch (err) {
-      debug.emptyCov(`Require failed: ${err}`);
-    } finally {
-      require.cache[require.resolve(file)] = cache;
-    }
-  });
-  Module.prototype.require = originalRequire;
-  const coverage = await v8CoverageInstrumenter2.stopInstrumenting();
-
-  return coverage
-    .filter(res => res.url.startsWith('file://'))
-    .map((res)=>{
-      return { ...res, url: fileURLToPath(res.url)};
-    })
-    .filter(res => res && shouldCover(res.url, options))
-    .map((res) => {
-
-      const functions = res.functions.map((func)=>{
-        if (func.functionName === '') {
-          return func;
-        }
-        return {
-          ...func,
-          ranges: func.ranges.map((range)=>{
-            return {...range, count: 0};
-          }),
-        };
-      });
-
-      return { ...res, functions};
-    });
-}
-
 
 function MergeFullCoverage(coverageData, emptyCoverage) {
   coverageData.forEach((report)=>{
