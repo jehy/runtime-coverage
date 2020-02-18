@@ -19,3 +19,4 @@ jest.config.js
 src/utils/__tests__
 package-lock.json
 __tests__
+.nyc_output
