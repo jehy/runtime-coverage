@@ -13,7 +13,7 @@ const REWRITE_SNAPSHOTS = false;
 
 function createTempFile(data) {
   const tmpDir = fs.mkdtempSync(`${os.tmpdir()}${path.sep}`);
-  const tmpFileName = `${tmpDir}tmp.txt`;
+  const tmpFileName = `${tmpDir}${path.sep}tmp.txt`;
   fs.writeFileSync(tmpFileName, data);
   return {tmpDir, tmpFileName};
 }
